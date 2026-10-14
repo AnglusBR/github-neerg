@@ -1,23 +1,23 @@
+
 name: Green Contributions
 
 on:
   schedule:
-    # 8 execuções por dia no horário do Brasil
-    - cron: '07 0 * * *'
+    # Horários naturais de segunda a sexta
+    - cron: '18 9 * * 1-5'
       timezone: "America/Sao_Paulo"
-    - cron: '38 3 * * *'
+
+    - cron: '43 11 * * 1-5'
       timezone: "America/Sao_Paulo"
-    - cron: '14 6 * * *'
+
+    - cron: '17 15 * * 1-5'
       timezone: "America/Sao_Paulo"
-    - cron: '52 9 * * *'
+
+    - cron: '36 17 * * 1-5'
       timezone: "America/Sao_Paulo"
-    - cron: '23 12 * * *'
-      timezone: "America/Sao_Paulo"
-    - cron: '47 15 * * *'
-      timezone: "America/Sao_Paulo"
-    - cron: '19 18 * * *'
-      timezone: "America/Sao_Paulo"
-    - cron: '41 21 * * *'
+
+    # Sábado: atividade ocasional
+    - cron: '24 11 * * 6'
       timezone: "America/Sao_Paulo"
 
   workflow_dispatch:
@@ -32,7 +32,7 @@ concurrency:
 jobs:
   contribution:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -45,61 +45,92 @@ jobs:
           git config user.name "anglus-software"
           git config user.email "77460329+michel-anglus@users.noreply.github.com"
 
-      - name: Generate Heavy Activity
+      - name: Generate Natural Activity
         id: generate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           BRANCH="${GITHUB_REF_NAME}"
+
+          DAY=$(TZ=America/Sao_Paulo date +%u)
+          CHANCE=$((RANDOM % 100))
+
+          # Execuções automáticas podem descansar.
+          # Execução manual sempre produz atividade.
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+
+            if [ "$DAY" -eq 6 ]; then
+              # Sábado: 70% de chance de descansar
+              if [ "$CHANCE" -lt 70 ]; then
+                echo "Sábado de descanso."
+                echo "commits=0" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+            elif [ "$DAY" -eq 7 ]; then
+              echo "Domingo de descanso."
+              echo "commits=0" >> "$GITHUB_OUTPUT"
+              exit 0
+
+            else
+              # Dias úteis: 35% de chance de descansar
+              if [ "$CHANCE" -lt 35 ]; then
+                echo "Nenhuma atividade nesta execução."
+                echo "commits=0" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+          fi
+
+          # Normalmente 1 commit por execução.
+          COMMITS=1
+
+          # Em alguns dias úteis, produz 2 commits.
+          if [ "$DAY" -le 5 ]; then
+            if [ $((RANDOM % 100)) -lt 15 ]; then
+              COMMITS=2
+            fi
+          fi
 
           git pull --rebase --autostash origin "$BRANCH"
 
           mkdir -p .activity
 
-          DAY=$(TZ=America/Sao_Paulo date +%u)
-
-          if [ "$DAY" -eq 6 ] || [ "$DAY" -eq 7 ]; then
-            # Sábado e domingo: 4.800 a 5.600 commits/dia
-            COMMITS=$((RANDOM % 101 + 600))
-          else
-            # Segunda a sexta: 25 a 60 commits por execução
-            COMMITS=$((RANDOM % 36 + 25))
-          fi
-
-          MESSAGES=(
-            "chore: update activity"
-            "chore: refresh activity"
-            "chore: sync working log"
-            "docs: update progress"
-            "docs: add working notes"
-            "fix: small adjustment"
-            "refactor: cleanup activity"
-            "build: update metadata"
-            "ci: refresh contribution data"
-            "work: update daily progress"
-          )
-
           FILE=".activity/activity-$(TZ=America/Sao_Paulo date +%Y-%m-%d).txt"
 
-          echo "Generating $COMMITS commits for day $DAY..."
+          MESSAGES=(
+            "chore: update daily log"
+            "chore: refresh activity records"
+            "docs: update activity notes"
+            "chore: sync progress log"
+            "docs: record daily progress"
+          )
 
-          for ((i=1;i<=COMMITS;i++))
-          do
+          echo "Generating $COMMITS commits..."
+
+          for ((i=1; i<=COMMITS; i++)); do
+
             MSG=${MESSAGES[$RANDOM % ${#MESSAGES[@]}]}
 
-            echo "$(TZ=America/Sao_Paulo date '+%Y-%m-%d %H:%M:%S') | $RANDOM | run $GITHUB_RUN_NUMBER | commit $i" >> "$FILE"
+            TIMESTAMP=$(TZ=America/Sao_Paulo date '+%Y-%m-%d %H:%M:%S')
+
+            echo "$TIMESTAMP | run $GITHUB_RUN_NUMBER | update $i" >> "$FILE"
 
             git add "$FILE"
             git commit -m "$MSG" --quiet
+
           done
 
           echo "commits=$COMMITS" >> "$GITHUB_OUTPUT"
           echo "day=$DAY" >> "$GITHUB_OUTPUT"
 
       - name: Push Changes
+        if: steps.generate.outputs.commits != '0'
         run: |
           git push origin HEAD:"${GITHUB_REF_NAME}"
 
       - name: Notify Google Chat
-        if: success()
+        if: success() && steps.generate.outputs.commits != '0'
         env:
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
           COMMITS: ${{ steps.generate.outputs.commits }}
@@ -110,7 +141,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$GOOGLE_CHAT_WEBHOOK_URL" ]; then
-            echo "GOOGLE_CHAT_WEBHOOK_URL não configurado. Pulando notificação."
+            echo "Google Chat não configurado."
             exit 0
           fi
 
@@ -118,12 +149,12 @@ jobs:
           import json
           import os
 
-          message = f"""✅ Green Contributions atualizado
+          message = f"""✅ Green Contributions
 
           Repositório: {os.environ['REPO']}
           Branch: {os.environ['BRANCH']}
-          Commits gerados: {os.environ['COMMITS']}
-          Dia da semana: {os.environ['DAY']}
+          Commits: {os.environ['COMMITS']}
+          Dia: {os.environ['DAY']}
           Execução: #{os.environ['RUN_NUMBER']}
           Link: {os.environ['RUN_URL']}"""
 
