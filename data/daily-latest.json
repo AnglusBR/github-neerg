@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-27",
+  "events": [
+    {
+      "action": "opened",
+      "created_at": "2026-10-27T12:54:31Z",
+      "id": "18342217248",
+      "number": 1,
+      "repo": "AnglusBR/github-neerg",
+      "type": "PullRequestEvent"
+    },
+    {
+      "action": "merged",
+      "created_at": "2026-10-27T13:03:44Z",
+      "id": "18342959165",
+      "number": 1,
+      "repo": "AnglusBR/github-neerg",
+      "type": "PullRequestEvent"
+    }
+  ],
+  "period": "daily",
+  "username": "AnglusBR"
+}
