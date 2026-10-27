@@ -85,7 +85,7 @@ jobs:
         id: commit
         shell: bash
         run: |
-          if git diff --quiet -- data reports; then
+          if [ -z "$(git status --porcelain -- data reports)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Nenhum dado novo; nada será enviado."
             exit 0
